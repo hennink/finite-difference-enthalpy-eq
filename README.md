@@ -1,3 +1,5 @@
+## Finite Difference Methods for the Non-linear Enthalpy Equation
+
 This code accompanies the paper
     "A Pressure-based Solver for Low-Mach Number Flow using a Discontinuous Galerkin Method", A. Hennink, M. Tiberga, D. Lathouwers
 that was submitted to the Journal of Computational Fluids on 2019-11.
