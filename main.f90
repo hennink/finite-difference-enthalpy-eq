@@ -13,7 +13,7 @@
 !       Q = Q(t)        is the source term.
 ! Uses a finite difference method with various techniques to deal with the non-linearity in the ODE. 
 ! 
-! This code accomanies the paper
+! This code accompanies the paper
 ! 
 !     "A Pressure-based Solver for Low-Mach Number Flow using a Discontinuous Galerkin Method", A. Hennink, M. Tiberga, D. Lathouwers
 ! 
