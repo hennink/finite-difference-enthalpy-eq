@@ -286,7 +286,7 @@ program main
     ! Prints the error in the time-stepping scheme a series of T0 values.
     ! 
     ! Usage:
-    !       ./fd affine deriv_rh 2 3
+    !       ./fd fluid_props=affine derivhr_strategy=deriv_rh order_BDF=2 order_EX=3
     use kinds_mod
     use props_mod
     use mansol_mod, only: TMIN, TMAX, AMPLITUDE, lambda, ex_src, ex_h, ex_T
@@ -296,21 +296,15 @@ program main
     type(error_t) :: error
     integer :: i
     real(wp), allocatable :: T0_vals(:)
-    character(:), allocatable :: props
     real(wp) :: drho
     
-    character(:), allocatable :: derivhr_strategy
+    character(:), allocatable :: props, derivhr_strategy
     integer :: order_extrapolation, order_BDF
-
-    character(:), allocatable :: options(:)
     
-    options = cl_args()
-    call assert(size(options) == 4,"bad number of CL options: expected 4")
-    props = options(1)
-    derivhr_strategy = options(2)
-    read(options(3),"(i1)") order_BDF
-    read(options(4),"(i1)") order_extrapolation
-
+    props = cl_value("fluid_props")
+    derivhr_strategy = cl_value("derivhr_strategy")
+    order_BDF = cl_value_as_int("order_BDF")
+    order_extrapolation = cl_value_as_int("order_EX")
 
     ! Initialize the props:
     lambda = 0.1_wp
@@ -391,24 +385,82 @@ program main
     enddo
 
 contains
-    function cl_args()
-        ! Return an array with all command line arguments, excluding the name of the program.
-        character(:), allocatable :: cl_args(:)
+    real(wp) function cl_value_as_real(option) result(val)
+        ! Return the value that was provided for 'option' on the command line.
+        ! 
+        ! This fails to error with inputs like "23,2" or "2.3;4", but I don't know how to read an 
+        ! unknown real format with a stricter format descriptor than '*'.
+        character(*), intent(in) :: option
 
-        integer :: i, n
+        character(:), allocatable :: as_char
+
+        as_char = cl_value(option)
+        read(as_char,*) val
+    end function
+
+    integer function cl_value_as_int(option) result(val)
+        ! Return the value that was provided for 'option' on the command line.
+        character(*), intent(in) :: option
+
+        character(:), allocatable :: as_char
+        character(10) :: fmt
+
+        as_char = cl_value(option)
+        write(fmt,"( '(i', i0, ')' )") len(as_char)
+        read(as_char,fmt) val
+    end function
+
+    function cl_value(option)
+        ! Return the value that was provided for 'option' on the command line.
+        character(*), intent(in) :: option
+        character(:), allocatable :: cl_value
+
+        character(:), allocatable, save :: all_args(:,:)
+        integer :: i
+
+        if (.not. allocated(all_args)) all_args = cl_args()
+
+        i = findloc(all_args(1,:),option,dim=1)
+        call assert(i > 0, "could not find this option in the command line arguments; option=" // option)
+        cl_value = trim(all_args(2,i))
+    end function
+
+    function cl_args() result(names_vals)
+        ! Return an array of (name,value) character pairs of command line arguments.
+        ! The command line arguments are expected to be of the form
+        !     option=foo  other_option=bar  n=3  flag=T  ...
+        character(:), allocatable :: names_vals(:,:)
+
+        character(:), allocatable :: raw_args(:), arg
+        integer :: i, n, splitloc
         integer :: status
+        integer :: maxlen
         integer, allocatable :: lengths(:)
         
         n = command_argument_count()
+        
+        ! Get a list of arguments in raw (i.e., unparsed) form:
         allocate(lengths(n))
         do i = 1, n
             call get_command_argument(i,length=lengths(i),status=status)
             call assert(status == 0, "bad status in get_command_argument")
         enddo
-        allocate(character(maxval(lengths)) :: cl_args(n))
+        maxlen = maxval(lengths)
+        allocate(character(maxlen) :: raw_args(n))
         do i = 1, n
-            call get_command_argument(i,value=cl_args(i))
+            call get_command_argument(i,value=raw_args(i))
             call assert(status == 0, "bad status in get_command_argument")
+        enddo
+
+        ! Split the raw arguments into names and values:
+        allocate(character(maxlen) :: names_vals(2,n)) ! over-dimensionalized, but does not matter.
+        do i = 1, n
+            arg = raw_args(i)
+            splitloc = index(arg,'=')
+            call assert(splitloc > 0, "could not find '=' in command line argument; arg=" // arg)
+            names_vals(1,i) = arg(:splitloc-1)
+            names_vals(2,i) = arg(splitloc+1:)
+            deallocate(arg)
         enddo
     end function
 
