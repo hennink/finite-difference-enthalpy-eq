@@ -427,20 +427,6 @@ contains
         enddo
     end function
 
-    function linspace(x1,x2,step) result(x)
-        real(wp), intent(in) :: x1, x2
-        real(wp), intent(in) :: step
-        real(wp), allocatable :: x(:)
-
-        integer :: i, n
-
-        n = 1 + floor((x2 - x1) / step)
-        allocate(x(n))
-        do i = 1, n
-            x(i) = x1 + step * (i-1)
-        enddo
-    end function
-
     subroutine assert(statement,error_msg)
         use, intrinsic :: iso_fortran_env, only: ERROR_UNIT
         logical, intent(in) :: statement
