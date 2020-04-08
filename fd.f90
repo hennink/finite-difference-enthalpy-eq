@@ -286,7 +286,7 @@ contains
 end module
 
 
-program main
+program fd
     ! Prints the error in the time-stepping scheme a series of T0 values.
     ! 
     ! Usage:
