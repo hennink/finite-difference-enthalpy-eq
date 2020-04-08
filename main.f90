@@ -284,6 +284,9 @@ end module
 
 program main
     ! Prints the error in the time-stepping scheme a series of T0 values.
+    ! 
+    ! Usage:
+    !       ./fd affine deriv_rh 2 3
     use kinds_mod
     use props_mod
     use mansol_mod, only: TMIN, TMAX, AMPLITUDE, lambda, ex_src, ex_h, ex_T
@@ -296,12 +299,20 @@ program main
     character(:), allocatable :: props
     real(wp) :: drho
     
-    character(*), parameter :: derivhr_strategy = 'deriv_rh' ! 'rho_predictor'
-    integer, parameter :: order_extrapolation = 3, &
-                          order_BDF = 2
+    character(:), allocatable :: derivhr_strategy
+    integer :: order_extrapolation, order_BDF
+
+    character(:), allocatable :: options(:)
+    
+    options = cl_args()
+    call assert(size(options) == 4,"bad number of CL options: expected 4")
+    props = options(1)
+    derivhr_strategy = options(2)
+    read(options(3),"(i1)") order_BDF
+    read(options(4),"(i1)") order_extrapolation
+
 
     ! Initialize the props:
-    allocate(props,source='affine')
     lambda = 0.1_wp
     cp = 1.0_wp
     ! T0 = ...
@@ -309,7 +320,7 @@ program main
     rho1 = 2.0_wp
 
     print *, '#  ======   INPUT:  ========'
-    print *, '# EOS (rho <--> T): ', props
+    print *, '# EOS (rho <--> T): ', trim(props)
     print *, '# rho0, rho1 = ', rho0, rho1
     print *, '# cp = ', cp
     print *, '# lambda = ', lambda
@@ -319,7 +330,7 @@ program main
     print *, '# TMIN = ', TMIN
     print *, '# TMAX = ', TMAX
     print *, '# '
-    print *, '# derivhr_strategy    = ', derivhr_strategy
+    print *, '# derivhr_strategy    = ', trim(derivhr_strategy)
     print *, '# order_extrapolation = ', order_extrapolation
     print *, '# order_BDF           = ', order_BDF
     print *, '#  ========================='
@@ -380,6 +391,27 @@ program main
     enddo
 
 contains
+    function cl_args()
+        ! Return an array with all command line arguments, excluding the name of the program.
+        character(:), allocatable :: cl_args(:)
+
+        integer :: i, n
+        integer :: status
+        integer, allocatable :: lengths(:)
+        
+        n = command_argument_count()
+        allocate(lengths(n))
+        do i = 1, n
+            call get_command_argument(i,length=lengths(i),status=status)
+            call assert(status == 0, "bad status in get_command_argument")
+        enddo
+        allocate(character(maxval(lengths)) :: cl_args(n))
+        do i = 1, n
+            call get_command_argument(i,value=cl_args(i))
+            call assert(status == 0, "bad status in get_command_argument")
+        enddo
+    end function
+
     function linspace(x1,x2,step) result(x)
         real(wp), intent(in) :: x1, x2
         real(wp), intent(in) :: step
@@ -393,5 +425,15 @@ contains
             x(i) = x1 + step * (i-1)
         enddo
     end function
-end program
 
+    subroutine assert(statement,error_msg)
+        use, intrinsic :: iso_fortran_env, only: ERROR_UNIT
+        logical, intent(in) :: statement
+        character(*), intent(in) :: error_msg
+
+        if (.not. statement) then
+            write(ERROR_UNIT,"(a)") error_msg
+            error stop
+        endif
+    end subroutine
+end program
