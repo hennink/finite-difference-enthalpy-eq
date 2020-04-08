@@ -113,7 +113,7 @@ module mansol_mod
     implicit none
 
     real(wp) :: lambda = UNINITIALIZED
-    real(wp), parameter :: PI = 3.1415926535897932384626433_wp
+    real(wp), parameter :: PI = 3.14159265358979323846264338327950288419716939937510582097494459_wp
     
     real(wp), parameter :: AMPLITUDE = 0.1_wp
     real(wp), parameter ::  TMIN = 0.5_wp - AMPLITUDE, &
