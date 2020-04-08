@@ -286,7 +286,7 @@ program main
     ! Prints the error in the time-stepping scheme a series of T0 values.
     ! 
     ! Usage:
-    !       ./fd fluid_props=affine derivhr_strategy=deriv_rh order_BDF=2 order_EX=3
+    !     ./fd fluid_props=affine lambda=0.1 cp=1.0 rho0=0.5 rho1=2.0    derivhr_strategy=deriv_rh order_BDF=2 order_EX=3 nsteps=2048
     use kinds_mod
     use props_mod
     use mansol_mod, only: TMIN, TMAX, AMPLITUDE, lambda, ex_src, ex_h, ex_T
@@ -300,18 +300,21 @@ program main
     
     character(:), allocatable :: props, derivhr_strategy
     integer :: order_extrapolation, order_BDF
+    integer :: nsteps
     
+    ! Fluid properties:
     props = cl_value("fluid_props")
+    lambda = cl_value_as_REAL("lambda")
+    cp = cl_value_as_REAL("cp")
+    rho0 = cl_value_as_REAL("rho0")
+    rho1 = cl_value_as_REAL("rho1")
+
+    ! Solution strategy:
     derivhr_strategy = cl_value("derivhr_strategy")
     order_BDF = cl_value_as_int("order_BDF")
     order_extrapolation = cl_value_as_int("order_EX")
 
-    ! Initialize the props:
-    lambda = 0.1_wp
-    cp = 1.0_wp
-    ! T0 = ...
-    rho0 = 0.5_wp
-    rho1 = 2.0_wp
+    nsteps = cl_value_as_int("nsteps")
 
     print *, '#  ======   INPUT:  ========'
     print *, '# EOS (rho <--> T): ', trim(props)
@@ -368,7 +371,7 @@ program main
     do i = 1, size(T0_vals)
         T0 = T0_vals(i)
         error = rel_T_error_after_time_steps(           &
-            nsteps = 2**11,                             &
+            nsteps = nsteps,                            &
             derivhr_strategy = derivhr_strategy,        &
             order_extrapolation = order_extrapolation,  &
             order_BDF = order_BDF                       &
