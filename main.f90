@@ -112,6 +112,10 @@ module mansol_mod
     use props_mod
     implicit none
 
+    private
+    public :: lambda
+    public :: ex_T, ex_deriv_T, ex_h, ex_src
+
     real(wp) :: lambda = UNINITIALIZED
     real(wp), parameter :: PI = 3.14159265358979323846264338327950288419716939937510582097494459_wp
     
@@ -286,21 +290,17 @@ program main
     ! Prints the error in the time-stepping scheme a series of T0 values.
     ! 
     ! Usage:
-    !     ./fd fluid_props=affine lambda=0.1 cp=1.0 rho0=0.5 rho1=2.0    derivhr_strategy=deriv_rh order_BDF=2 order_EX=3 nsteps=2048
+    !     ./fd fluid_props=affine lambda=0.1 cp=1.0 rho0=0.5 rho1=2.0    T0=1.0    derivhr_strategy=deriv_rh order_BDF=2 order_EX=3 nsteps=2048
     use kinds_mod
     use props_mod
-    use mansol_mod, only: TMIN, TMAX, AMPLITUDE, lambda, ex_src, ex_h, ex_T
+    use mansol_mod, only: lambda
     use time_stepping_mod, only: error_t, rel_T_error_after_time_steps
     implicit none
-    
-    type(error_t) :: error
-    integer :: i
-    real(wp), allocatable :: T0_vals(:)
-    real(wp) :: drho
     
     character(:), allocatable :: props, derivhr_strategy
     integer :: order_extrapolation, order_BDF
     integer :: nsteps
+    type(error_t) :: error
     
     ! Fluid properties:
     props = cl_value("fluid_props")
@@ -309,6 +309,8 @@ program main
     rho0 = cl_value_as_REAL("rho0")
     rho1 = cl_value_as_REAL("rho1")
 
+    T0 = cl_value_as_REAL("T0")
+
     ! Solution strategy:
     derivhr_strategy = cl_value("derivhr_strategy")
     order_BDF = cl_value_as_int("order_BDF")
@@ -316,76 +318,34 @@ program main
 
     nsteps = cl_value_as_int("nsteps")
 
-    print *, '#  ======   INPUT:  ========'
-    print *, '# EOS (rho <--> T): ', trim(props)
-    print *, '# rho0, rho1 = ', rho0, rho1
-    print *, '# cp = ', cp
-    print *, '# lambda = ', lambda
-    print *, '# '
-    print *, '# exact_T = 0.5 + AMPLITUDE * sin(2*PI*time)'
-    print *, '# AMPLITUDE = ', AMPLITUDE
-    print *, '# TMIN = ', TMIN
-    print *, '# TMAX = ', TMAX
-    print *, '# '
-    print *, '# derivhr_strategy    = ', trim(derivhr_strategy)
-    print *, '# order_extrapolation = ', order_extrapolation
-    print *, '# order_BDF           = ', order_BDF
-    print *, '#  ========================='
-    print *, '#'
-
-    drho = rho1 - rho0
     select case(props)
     case('constant')
-        print *, '# dH/dh = 0 for no T0'
         T2rho => T2rho__constant
         T2deriv_rho_T => T2deriv_rho_T__constant
     case('affine')
-        print *, '# dH/dh = 0         for T0 = ', 2*TMAX - rho1 / (rho1 - rho0)
-        print *, '# -h = cp/beta      for T0 = ', (drho + rho0)/drho
-        print *, '# +h = cp/beta      for T0 = ', 2*TMIN - 1 - rho0/drho, '...', 2*TMAX - 1 - rho0/drho
         T2rho => T2rho__affine
         T2deriv_rho_T => T2deriv_rho_T__affine
     case('mixing')
-        print *, '# dH/dh = 0         for T0 = ', -rho0 / drho
-        print *, '# -h = cp/beta      for T0 = ', 2*TMIN + rho0/drho, '...', 2*TMAX + rho0/drho
-        print *, '# +h = cp/beta      for T0 = ', -rho0 / drho
         T2rho => T2rho__mixing
         T2deriv_rho_T => T2deriv_rho_T__mixing
     case default
         error stop 'unknown fluid property'
     end select
-    print *, '#'
 
-    ! Loop over values of T0:
-    print "(a,6(', ',a))",              &
-            ' #    T0',                 &
-            '  rel_error_T',            & 
-            '  (non-uniq (rho*h))',     &
-            '  (d/dh (rho*h) <= 0)',    &
-            '  (impl_part <= 0)',       &
-            '  (-h >= cp/beta)',        &
-            '  (+h >= cp/beta)'
-    
-    ! Loop over T0 values, which is a global variable.
-    T0_vals = linspace(-10.0_wp,10.0_wp,step=0.01_wp)
-    do i = 1, size(T0_vals)
-        T0 = T0_vals(i)
-        error = rel_T_error_after_time_steps(           &
-            nsteps = nsteps,                            &
-            derivhr_strategy = derivhr_strategy,        &
-            order_extrapolation = order_extrapolation,  &
-            order_BDF = order_BDF                       &
-        )
-        write(*,'(f20.2, es20.2e4, 7i5)')                       &
-            T0,                                                 &
-            error%relative_error,                               &
-            merge(1, 0, [                                       &
-                error%pos_deriv_Hh .and. error%nonpos_deriv_Hh, &
-                error%nonpos_deriv_Hh,                          &
-                error%nonpos_implicit_weight,                   &
-                error%h_too_low, error%h_too_high               &
-            ])
-    enddo
+    error = rel_T_error_after_time_steps(           &
+        nsteps = nsteps,                            &
+        derivhr_strategy = derivhr_strategy,        &
+        order_extrapolation = order_extrapolation,  &
+        order_BDF = order_BDF                       &
+    )
+    write(*,"(es20.2e4, 7i5)")                              &
+        error%relative_error,                               &
+        merge(1, 0, [                                       &
+            error%pos_deriv_Hh .and. error%nonpos_deriv_Hh, &
+            error%nonpos_deriv_Hh,                          &
+            error%nonpos_implicit_weight,                   &
+            error%h_too_low, error%h_too_high               &
+        ])
 
 contains
     real(wp) function cl_value_as_real(option) result(val)
