@@ -23,7 +23,7 @@ module kinds_mod
     use, intrinsic :: iso_fortran_env
     implicit none
 
-    integer, parameter :: WP = REAL128
+    integer, parameter :: WP = REAL32
     
     real(wp), parameter :: UNINITIALIZED = -huge(1.0_wp)
 end module
