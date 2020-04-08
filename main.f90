@@ -284,6 +284,9 @@ end module
 
 program main
     ! Prints the error in the time-stepping scheme a series of T0 values.
+    ! 
+    ! Usage:
+    !     ./fd fluid_props=affine lambda=0.1 cp=1.0 rho0=0.5 rho1=2.0    derivhr_strategy=deriv_rh order_BDF=2 order_EX=3 nsteps=2048
     use kinds_mod
     use props_mod
     use mansol_mod, only: TMIN, TMAX, AMPLITUDE, lambda, ex_src, ex_h, ex_T
@@ -293,23 +296,28 @@ program main
     type(error_t) :: error
     integer :: i
     real(wp), allocatable :: T0_vals(:)
-    character(:), allocatable :: props
     real(wp) :: drho
     
-    character(*), parameter :: derivhr_strategy = 'deriv_rh' ! 'rho_predictor'
-    integer, parameter :: order_extrapolation = 3, &
-                          order_BDF = 2
+    character(:), allocatable :: props, derivhr_strategy
+    integer :: order_extrapolation, order_BDF
+    integer :: nsteps
+    
+    ! Fluid properties:
+    props = cl_value("fluid_props")
+    lambda = cl_value_as_REAL("lambda")
+    cp = cl_value_as_REAL("cp")
+    rho0 = cl_value_as_REAL("rho0")
+    rho1 = cl_value_as_REAL("rho1")
 
-    ! Initialize the props:
-    allocate(props,source='affine')
-    lambda = 0.1_wp
-    cp = 1.0_wp
-    ! T0 = ...
-    rho0 = 0.5_wp
-    rho1 = 2.0_wp
+    ! Solution strategy:
+    derivhr_strategy = cl_value("derivhr_strategy")
+    order_BDF = cl_value_as_int("order_BDF")
+    order_extrapolation = cl_value_as_int("order_EX")
+
+    nsteps = cl_value_as_int("nsteps")
 
     print *, '#  ======   INPUT:  ========'
-    print *, '# EOS (rho <--> T): ', props
+    print *, '# EOS (rho <--> T): ', trim(props)
     print *, '# rho0, rho1 = ', rho0, rho1
     print *, '# cp = ', cp
     print *, '# lambda = ', lambda
@@ -319,7 +327,7 @@ program main
     print *, '# TMIN = ', TMIN
     print *, '# TMAX = ', TMAX
     print *, '# '
-    print *, '# derivhr_strategy    = ', derivhr_strategy
+    print *, '# derivhr_strategy    = ', trim(derivhr_strategy)
     print *, '# order_extrapolation = ', order_extrapolation
     print *, '# order_BDF           = ', order_BDF
     print *, '#  ========================='
@@ -363,7 +371,7 @@ program main
     do i = 1, size(T0_vals)
         T0 = T0_vals(i)
         error = rel_T_error_after_time_steps(           &
-            nsteps = 2**11,                             &
+            nsteps = nsteps,                            &
             derivhr_strategy = derivhr_strategy,        &
             order_extrapolation = order_extrapolation,  &
             order_BDF = order_BDF                       &
@@ -380,6 +388,85 @@ program main
     enddo
 
 contains
+    real(wp) function cl_value_as_real(option) result(val)
+        ! Return the value that was provided for 'option' on the command line.
+        ! 
+        ! This fails to error with inputs like "23,2" or "2.3;4", but I don't know how to read an 
+        ! unknown real format with a stricter format descriptor than '*'.
+        character(*), intent(in) :: option
+
+        character(:), allocatable :: as_char
+
+        as_char = cl_value(option)
+        read(as_char,*) val
+    end function
+
+    integer function cl_value_as_int(option) result(val)
+        ! Return the value that was provided for 'option' on the command line.
+        character(*), intent(in) :: option
+
+        character(:), allocatable :: as_char
+        character(10) :: fmt
+
+        as_char = cl_value(option)
+        write(fmt,"( '(i', i0, ')' )") len(as_char)
+        read(as_char,fmt) val
+    end function
+
+    function cl_value(option)
+        ! Return the value that was provided for 'option' on the command line.
+        character(*), intent(in) :: option
+        character(:), allocatable :: cl_value
+
+        character(:), allocatable, save :: all_args(:,:)
+        integer :: i
+
+        if (.not. allocated(all_args)) all_args = cl_args()
+
+        i = findloc(all_args(1,:),option,dim=1)
+        call assert(i > 0, "could not find this option in the command line arguments; option=" // option)
+        cl_value = trim(all_args(2,i))
+    end function
+
+    function cl_args() result(names_vals)
+        ! Return an array of (name,value) character pairs of command line arguments.
+        ! The command line arguments are expected to be of the form
+        !     option=foo  other_option=bar  n=3  flag=T  ...
+        character(:), allocatable :: names_vals(:,:)
+
+        character(:), allocatable :: raw_args(:), arg
+        integer :: i, n, splitloc
+        integer :: status
+        integer :: maxlen
+        integer, allocatable :: lengths(:)
+        
+        n = command_argument_count()
+        
+        ! Get a list of arguments in raw (i.e., unparsed) form:
+        allocate(lengths(n))
+        do i = 1, n
+            call get_command_argument(i,length=lengths(i),status=status)
+            call assert(status == 0, "bad status in get_command_argument")
+        enddo
+        maxlen = maxval(lengths)
+        allocate(character(maxlen) :: raw_args(n))
+        do i = 1, n
+            call get_command_argument(i,value=raw_args(i))
+            call assert(status == 0, "bad status in get_command_argument")
+        enddo
+
+        ! Split the raw arguments into names and values:
+        allocate(character(maxlen) :: names_vals(2,n)) ! over-dimensionalized, but does not matter.
+        do i = 1, n
+            arg = raw_args(i)
+            splitloc = index(arg,'=')
+            call assert(splitloc > 0, "could not find '=' in command line argument; arg=" // arg)
+            names_vals(1,i) = arg(:splitloc-1)
+            names_vals(2,i) = arg(splitloc+1:)
+            deallocate(arg)
+        enddo
+    end function
+
     function linspace(x1,x2,step) result(x)
         real(wp), intent(in) :: x1, x2
         real(wp), intent(in) :: step
@@ -393,5 +480,15 @@ contains
             x(i) = x1 + step * (i-1)
         enddo
     end function
-end program
 
+    subroutine assert(statement,error_msg)
+        use, intrinsic :: iso_fortran_env, only: ERROR_UNIT
+        logical, intent(in) :: statement
+        character(*), intent(in) :: error_msg
+
+        if (.not. statement) then
+            write(ERROR_UNIT,"(a)") error_msg
+            error stop
+        endif
+    end subroutine
+end program
